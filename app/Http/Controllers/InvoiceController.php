@@ -10,13 +10,10 @@ class InvoiceController extends Controller
 {
     public function getInvoicesByCurrency()
     {
-        // Fetch distinct currencies from invoices
         $currencies = Invoice::select('currency')->distinct()->get();
 
-        // Initialize the result array
         $result = [];
 
-        // Loop through each currency and fetch invoices for each time period
         foreach ($currencies as $currency) {
             $result[$currency->currency] = [
                 'today' => $this->fetchInvoices($currency->currency, 'today'),
@@ -30,8 +27,88 @@ class InvoiceController extends Controller
             ];
         }
 
-        // Return the result as a JSON response
-        return response()->json($result);
+        return view('invoices.index', compact('result'));
+    }
+
+
+    public function fetchInvoicesByFilters(Request $request)
+    {
+        $currency = $request->input('currency');
+        $period = $request->input('period');
+        $amountMin = $request->input('amount_min');
+        $amountMax = $request->input('amount_max');
+
+        \Log::debug('Currency: ' . $currency);
+        \Log::debug('Period: ' . $period);
+        \Log::debug('Amount Min: ' . $amountMin);
+        \Log::debug('Amount Max: ' . $amountMax);
+
+        try {
+            $dateRange = $this->getDateRangeForPeriod($period);
+        } catch (\Exception $e) {
+            \Log::error('Error getting date range: ' . $e->getMessage());
+            return response()->json(['error' => 'Invalid period'], 400);
+        }
+
+        $query = Invoice::whereBetween('created_at', [$dateRange['start'], $dateRange['end']]);
+
+        if ($currency) {
+            $query->where('currency', $currency);
+        }
+
+        if ($amountMin) {
+            $query->where('amount', '>=', $amountMin);
+        }
+
+        if ($amountMax) {
+            $query->where('amount', '<=', $amountMax);
+        }
+
+        $invoices = $query->get(['currency', 'id as invoice_id', 'amount', 'created_at']);
+
+        $groupedInvoices = [];
+
+        foreach ($invoices as $invoice) {
+            $invoicePeriod = $this->determinePeriod($invoice->created_at, $period);
+            if ($invoicePeriod) {
+                $groupedInvoices[$invoice->currency][$invoicePeriod][] = [
+                    'invoice_id' => $invoice->invoice_id,
+                    'amount' => $invoice->amount,
+                    'date' => $invoice->created_at->format('Y-m-d'),
+                ];
+            }
+        }
+
+        return response()->json($groupedInvoices);
+    }
+
+    private function determinePeriod($date, $selectedPeriod)
+    {
+        switch ($selectedPeriod) {
+            case 'today':
+                return Carbon::today()->isSameDay($date) ? 'today' : null;
+            case 'yesterday':
+                return Carbon::yesterday()->isSameDay($date) ? 'yesterday' : null;
+            case 'this_week':
+                return Carbon::now()->startOfWeek()->lte($date) && Carbon::now()->endOfWeek()->gte($date) ? 'this_week' : null;
+            case 'last_week':
+                return Carbon::now()->subWeek()->startOfWeek()->lte($date) && Carbon::now()->subWeek()->endOfWeek()->gte($date) ? 'last_week' : null;
+            case 'this_month':
+                return Carbon::now()->startOfMonth()->lte($date) && Carbon::now()->endOfMonth()->gte($date) ? 'this_month' : null;
+            case 'last_month':
+                return Carbon::now()->subMonth()->startOfMonth()->lte($date) && Carbon::now()->subMonth()->endOfMonth()->gte($date) ? 'last_month' : null;
+            case 'this_year':
+                return Carbon::now()->startOfYear()->lte($date) && Carbon::now()->endOfYear()->gte($date) ? 'this_year' : null;
+            case 'last_year':
+                return Carbon::now()->subYear()->startOfYear()->lte($date) && Carbon::now()->subYear()->endOfYear()->gte($date) ? 'last_year' : null;
+            default:
+                return null;
+        }
+    }
+
+    public function getCurrencies()
+    {
+        return response()->json(Invoice::select('currency')->distinct()->pluck('currency'));
     }
 
     private function fetchInvoices($currency, $period)
@@ -41,8 +118,8 @@ class InvoiceController extends Controller
 
         // Fetch invoices within the specified date range for the given currency
         return Invoice::where('currency', $currency)
-                      ->whereBetween('created_at', [$dateRange['start'], $dateRange['end']])
-                      ->get(['id as invoice_id', 'amount', 'invoice_date']);
+            ->whereBetween('created_at', [$dateRange['start'], $dateRange['end']])
+            ->get(['id as invoice_id', 'amount', 'invoice_date']);
     }
 
     private function getDateRangeForPeriod($period)

@@ -1,7 +1,7 @@
 <?php
 
-use App\Http\Controllers\InvoiceController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\InvoiceController;
 
 /*
 |--------------------------------------------------------------------------
@@ -15,37 +15,39 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', function () {
-    return view('welcome');
+    return redirect()->route('login');
 });
 
-
-Route::get('/invoices', [InvoiceController::class, 'getInvoicesByCurrency']);
-
-
-Route::prefix('admin')->middleware('role:Admin')->group(function () {
-    Route::get('/dashboard', function () {
-        return view('admin.dashboard');
-    });
-    Route::get('/about', function () {
-        return view('admin.about');
-    });
-    Route::get('/contact-us', function () {
-        return view('admin.contact');
-    });
-});
-
-Route::prefix('camp')->middleware('role:Camp')->group(function () {
-    Route::get('/dashboard', function () {
-        return view('camp.dashboard');
-    });
-    Route::get('/about', function () {
-        return view('camp.about');
-    });
-    Route::get('/contact-us', function () {
-        return view('camp.contact');
-    });
-});
-
+// Authentication Routes
 Auth::routes();
 
-Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
+// Your existing routes for invoices and dashboards
+
+Route::get('/invoices', [InvoiceController::class, 'getInvoicesByCurrency']);
+Route::get('/api/invoices', [InvoiceController::class, 'fetchInvoicesByFilters']);
+Route::get('/api/invoices/currencies', [InvoiceController::class, 'getCurrencies']);
+
+// Define an array of roles and corresponding prefixes
+$roles = [
+    'Admin' => 'admin',
+    'Camp' => 'camp',
+    'Sales Supervisor' => 'sales-supervisor',
+    'Accounts' => 'accounts',
+    'Staff' => 'staff',
+    'Kitchen' => 'kitchen',
+];
+
+// Dynamically create routes for each role
+foreach ($roles as $role => $prefix) {
+    Route::group(['middleware' => ['auth', "role:$role"], 'prefix' => $prefix], function () use ($prefix) {
+        Route::get('/dashboard', function () use ($prefix) {
+            return view("$prefix.dashboard");
+        });
+        Route::get('/about', function () use ($prefix) {
+            return view("$prefix.about");
+        });
+        Route::get('/contact', function () use ($prefix) {
+            return view("$prefix.contact");
+        });
+    });
+}

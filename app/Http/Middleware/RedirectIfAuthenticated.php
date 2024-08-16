@@ -2,28 +2,32 @@
 
 namespace App\Http\Middleware;
 
-use App\Providers\RouteServiceProvider;
 use Closure;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class RedirectIfAuthenticated
 {
-    /**
-     * Handle an incoming request.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \Closure(\Illuminate\Http\Request): (\Illuminate\Http\Response|\Illuminate\Http\RedirectResponse)  $next
-     * @param  string|null  ...$guards
-     * @return \Illuminate\Http\Response|\Illuminate\Http\RedirectResponse
-     */
-    public function handle(Request $request, Closure $next, ...$guards)
+    public function handle($request, Closure $next, $guard = null)
     {
-        $guards = empty($guards) ? [null] : $guards;
+        if (Auth::check()) {
+            $role = Auth::user()->role->name;
 
-        foreach ($guards as $guard) {
-            if (Auth::guard($guard)->check()) {
-                return redirect(RouteServiceProvider::HOME);
+            // Redirect users based on their role
+            switch ($role) {
+                case 'Admin':
+                    return redirect('/admin/dashboard');
+                case 'Camp':
+                    return redirect('/camp/dashboard');
+                case 'Sales Supervisor':
+                    return redirect('/sales-supervisor/dashboard');
+                case 'Accounts':
+                    return redirect('/accounts/dashboard');
+                case 'Staff':
+                    return redirect('/staff/dashboard');
+                case 'Kitchen':
+                    return redirect('/kitchen/dashboard');
+                default:
+                    return redirect('/home');
             }
         }
 
